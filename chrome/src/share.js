@@ -43,7 +43,7 @@
                 CORE.showToast("正在获取文件列表... " + completedCount + "/" + (completedCount + folders.length - 1), "MODE_SUCCESS");
 
                 var path = folders.pop();
-                $.getJSON("/share/list", {
+                $.getJSON(window.location.origin + "/share/list", {
                     "dir": path,
                     "bdstoken": yunData.MYBDSTOKEN,
                     "uk": yunData.SHARE_UK,
@@ -109,19 +109,19 @@
 
         return downloader;
     })();
+    window.addEventListener("message", function (event) {
+        if (event.source != window)
+            return;
 
-    function getSelected() {
-        if (yunData.SHAREPAGETYPE == "single_file_page") {
-            return [{ isdir: false, path: yunData.PATH, id: yunData.FS_ID }];
-        }
-        else {
-            // TODO(Simon): Download all files by default?
-            // Maybe we can switch the button content between "导出全部" and "导出所选".
-            var selected = $(".chked").closest(".item");
-            if (selected.length == 0)
-                return [];
+        if (event.data.type == "selected") {
+            Downloader.reset();
 
-            var path = getHashParameter("path");
+            var selectedFile = event.data.data;
+            if (selectedFile.length == 0) {
+                CORE.showToast("请选择一下你要保存的文件哦", "failure");
+                return;
+            }
+            var path = getHashParameter("parentPath");
 
             // Short path, we are at root folder,
             // so the only thing we can do is downloading all files.
@@ -133,14 +133,26 @@
             }else{
                 pathPrefixLength = path.length + 1;
             }
-            return selected.map(function (index, item) {
-                item = $(item);
-                return {
-                    isdir: item.data("extname") == "dir",
-                    path: path + "/" + item.find(".name-text").data("name"),
-                    id: item.data("id")
-                };
-            });
+
+            for (var i = 0; i < selectedFile.length; i++) {
+                var item = selectedFile[i];
+                if (item.isdir)
+                    Downloader.addFolder(item.path);
+                else
+                    Downloader.addFile(item.fs_id, path + "/" + item.server_filename);
+            }
+
+            Downloader.start();
+        }
+    });
+    function getSelected() {
+        if (yunData.SHAREPAGETYPE == "single_file_page") {
+            return [{ isdir: false, path: yunData.PATH, id: yunData.FS_ID }];
+        }
+        else {
+            // TODO(Simon): Download all files by default?
+            // Maybe we can switch the button content between "导出全部" and "导出所选".
+            window.postMessage({ "type": "get_selected" }, "*");
         }
     }
 
@@ -149,20 +161,17 @@
         Downloader.reset();
 
         var selected = getSelected();
-        if (selected.length == 0) {
-            CORE.showToast("请选择一下你要保存的文件哦", "MODE_CAUTION");
-            return;
-        }
+        if (selected) {
+            for (var i =0;i<selected.length;i++) {
+                var item = selected[i];
+                if (item.isdir)
+                    Downloader.addFolder(item.path);
+                else
+                    Downloader.addFile(item.id);
+            }
 
-        for (var i =0;i<selected.length;i++) {
-            var item = selected[i];
-            if (item.isdir)
-                Downloader.addFolder(item.path);
-            else
-                Downloader.addFile(item.id);
+            Downloader.start();
         }
-
-        Downloader.start();
     }
 
     //设置要请求文件的POST数据
@@ -183,14 +192,14 @@
 
     function alertDialog(json, data) {
         var id = json.request_id;
-        var div = $("<div>").attr("id", "alert_div" + id).addClass("b-panel b-dialog alert-dialog");
+        var div = $("<div>").attr("id", "alert_div" + id).addClass("vcode_div");
         var html = [
-            '<div class="dlg-hd b-rlv">',
-            '<div title="关闭" id="alert_dialog_close" class="dlg-cnr dlg-cnr-r"></div>',
+            '<div class="top">',
+            '<div title="关闭" id="alert_dialog_close" class="close"></div>',
             "<h3>提示</h3>",
             "</div>",
-            '<div class="dlg-bd">',
-            '<div class="alert-dialog-msg center">',
+            '<div class="dialog-body">',
+            '<div class="alert-dialog-msg">',
             '<div class="download-verify">',
             '<div class="verify-body">请输入验证码：<input id="verification" type="text" class="input-code" maxlength="4">',
             '<img id="vcode" class="img-code" alt="验证码获取中"  width="100" height="30">',
@@ -202,11 +211,9 @@
             "</div>",
             "</div>",
             "</div>",
-            '<div class="dlg-ft b-rlv">',
-            '<div class="alert-dialog-commands clearfix center">',
-            '<a href="javascript:;" id="okay" class="sbtn okay"><b>确定</b></a>',
-            '<a href="javascript:;" id="ignore" class="dbtn cancel"><b>取消</b></a>',
-            "</div>",
+            '<div class="dialog-footer g-clearfix">',
+            '<a href="javascript:;" id="okay" class="button button-blue"><b>确定</b></a>',
+            '<a href="javascript:;" id="ignore" class="button"><b>取消</b></a>',
             "</div>"
         ];
         div.html(html.join(""));
@@ -243,20 +250,20 @@
 
     //根据文件路径获取文件的信息
     function getFilemetas(data) {
-        $.post("/api/sharedownload?" + $.param({
+        $.post(window.location.origin + "/api/sharedownload?" + $.param({
             "timestamp": yunData.TIMESTAMP,
             "sign": yunData.SIGN,
             "bdstoken": yunData.MYBDSTOKEN,
-            "app_id": yunData.FILEINFO[0].app_id,
+            "app_id": 250528,
             "channel": "chunlei",
             "clienttype": 0,
             "web": 1
         }), data, null, "json").done(function (json) {
             if (json.errno == -20) {
-                $.getJSON("/api/getcaptcha", {
+                $.getJSON(window.location.origin + "/api/getcaptcha", {
                     "prod": "share",
                     "bdstoken": yunData.MYBDSTOKEN,
-                    "app_id": yunData.FILEINFO[0].app_id,
+                    "app_id": 250528,
                     "channel": "chunlei",
                     "clienttype": 0,
                     "web": 1
@@ -282,13 +289,13 @@
                 if (yunData.SHAREPAGETYPE == "single_file_page") {
                     var item = json.list[0];
                     // For single file, save to filename.
-                    file_list.push({ name: yunData.FILENAME, link: item.dlink });
+                    file_list.push({ name: yunData.FILENAME, link: item.dlink, md5: item.md5 });
                 }
                 else {
                     // For multiple files, save relates to share base folder.
                     for (var i = 0;i<json.list.length;i++) {
                         var item = json.list[i];
-                        file_list.push({ name: item.path.substr(pathPrefixLength), link: item.dlink });
+                        file_list.push({ name: item.path.substr(pathPrefixLength), link: item.dlink, md5: item.md5 });
                     }
                 }
 
